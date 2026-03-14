@@ -2,6 +2,7 @@ import subprocess
 import os
 import shutil
 
+
 class CommandExecutor:
     def __init__(self):
         self.cwd = os.path.expanduser("~")
@@ -76,8 +77,8 @@ class CommandExecutor:
         if low in ["go home", "home"]:
             return self._open_folder(os.path.expanduser("~"))
 
-        if low.startswith("go to") or low.startswith("goto"):
-            path = cmd.split(" ", 2)[2].strip() if low.startswith("go to") else cmd[5:].strip()
+        if low.startswith("go to"):
+            path = cmd.split(" ", 2)[2].strip()
             return self._open_folder(path)
 
         if low.startswith("cd "):
@@ -114,9 +115,6 @@ class CommandExecutor:
 
         if low in ["system info", "pc info", "computer info"]:
             return self._run("systeminfo")
-
-        if low in ["battery", "battery status", "check battery"]:
-            return self._run("powercfg /batteryreport /output battery.html && start battery.html")
 
         if low in ["disk space", "storage", "check disk", "disk info"]:
             return self._run("wmic logicaldisk get size,freespace,caption")
@@ -202,8 +200,12 @@ class CommandExecutor:
 
         # ── PYTHON commands ────────────────────────────
 
-        if low.startswith("run python ") or low.startswith("run "):
-            file = cmd.split(" ", 2)[2] if low.startswith("run python") else cmd[4:].strip()
+        if low.startswith("run python "):
+            file = cmd.split(" ", 2)[2].strip()
+            return self._run(f"python {file}")
+
+        if low.startswith("run "):
+            file = cmd[4:].strip()
             return self._run(f"python {file}")
 
         if low.startswith("install "):
@@ -237,7 +239,7 @@ class CommandExecutor:
             parts = cmd.split(" ", 3)
             if len(parts) == 4:
                 os.environ[parts[2]] = parts[3]
-                return self._ok(f"✓ ENV set: {parts[2]} = {parts[3]}\n")
+                return self._ok(f"ENV set: {parts[2]} = {parts[3]}\n")
 
         # ── HELP ───────────────────────────────────────
 
@@ -289,7 +291,8 @@ class CommandExecutor:
             return self._err(str(e))
 
     def _create_file(self, filename):
-        if not filename: return self._err("File ka naam batao")
+        if not filename:
+            return self._err("File ka naam batao")
         try:
             open(os.path.join(self.cwd, filename), 'w').close()
             return self._ok(f"✓ File ban gayi: {filename}\n")
@@ -297,7 +300,8 @@ class CommandExecutor:
             return self._err(str(e))
 
     def _create_folder(self, folder):
-        if not folder: return self._err("Folder ka naam batao")
+        if not folder:
+            return self._err("Folder ka naam batao")
         try:
             os.makedirs(os.path.join(self.cwd, folder), exist_ok=True)
             return self._ok(f"✓ Folder ban gaya: {folder}\n")
@@ -305,7 +309,8 @@ class CommandExecutor:
             return self._err(str(e))
 
     def _delete_file(self, filename):
-        if not filename: return self._err("File ka naam batao")
+        if not filename:
+            return self._err("File ka naam batao")
         try:
             os.remove(os.path.join(self.cwd, filename))
             return self._ok(f"✓ File delete ho gayi: {filename}\n")
@@ -315,7 +320,8 @@ class CommandExecutor:
             return self._err(str(e))
 
     def _delete_folder(self, folder):
-        if not folder: return self._err("Folder ka naam batao")
+        if not folder:
+            return self._err("Folder ka naam batao")
         try:
             shutil.rmtree(os.path.join(self.cwd, folder))
             return self._ok(f"✓ Folder delete ho gaya: {folder}\n")
@@ -384,24 +390,24 @@ class CommandExecutor:
         try:
             items = os.listdir(self.cwd)
             folders = [f"📁 {i}" for i in items if os.path.isdir(os.path.join(self.cwd, i))]
-            files   = [f"📄 {i}" for i in items if os.path.isfile(os.path.join(self.cwd, i))]
-            output  = "\n".join(folders + files) + "\n"
+            files = [f"📄 {i}" for i in items if os.path.isfile(os.path.join(self.cwd, i))]
+            output = "\n".join(folders + files) + "\n"
             return self._ok(output or "Kuch nahi hai yahan\n")
         except Exception as e:
             return self._err(str(e))
 
     def _help(self):
         return self._ok("""
-📁 FOLDER:   open folder <naam>  |  create folder <naam>  |  delete folder <naam>
-📄 FILE:     create file <naam>  |  delete file <naam>  |  read file <naam>
-             copy file <src> <dst>  |  move file <src> <dst>  |  find file <naam>
-🗺️  NAV:     show files  |  where am i  |  go back  |  go home  |  go to <path>
-🌐 NETWORK:  show ip  |  check internet  |  ping <site>  |  show wifi
-💻 SYSTEM:   show processes  |  kill <app>  |  system info  |  disk space  |  cpu usage
-🚀 APPS:     open notepad  |  open chrome  |  open calculator  |  search <query>
-🐍 PYTHON:   run <file.py>  |  install <package>  |  installed packages
-🔧 GIT:      git status  |  git init  |  commit <message>  |  push  |  pull
-⚙️  OTHER:   date  |  time  |  shutdown  |  restart  |  clear screen
+📁 FOLDER:   open folder <naam>  |  create folder <naam>  |  delete folder <naam>  |  rename folder <purana> <naya>
+📄 FILE:     create file <naam>  |  delete file <naam>    |  read file <naam>       |  write file <naam> <content>
+             copy file <src> <dst>  |  move file <src> <dst>  |  find file <naam>   |  open file <naam>
+🗺️  NAV:     show files  |  where am i  |  go back  |  go home  |  go to <path>  |  cd <path>
+🌐 NETWORK:  show ip  |  check internet  |  ping <site>  |  show wifi  |  my wifi  |  open ports
+💻 SYSTEM:   show processes  |  kill <app>  |  system info  |  disk space  |  cpu usage  |  date  |  time
+🚀 APPS:     open notepad  |  open chrome  |  open calculator  |  open paint  |  open edge  |  search <query>
+🐍 PYTHON:   run <file.py>  |  install <package>  |  uninstall <package>  |  installed packages
+🔧 GIT:      git status  |  git init  |  commit <message>  |  push  |  pull  |  clone <url>
+⚙️  OTHER:   shutdown  |  restart  |  shutdown in <mins>  |  cancel shutdown  |  clear screen
 """)
 
     def get_history(self, tab_id=None):
@@ -409,26 +415,5 @@ class CommandExecutor:
             return [h for h in self.history if h["tab"] == tab_id]
         return self.history
 
+
 executor = CommandExecutor()
-```
-
----
-
-Ab yeh sab bolne se kaam hoga:
-```
-open folder Documents
-create file notes.txt
-read file notes.txt
-write file notes.txt Hello bhai!
-find file notes
-copy file notes.txt backup.txt
-show files
-check internet
-show ip
-open notepad
-search Python tutorial
-install requests
-commit mera pehla commit
-disk space
-system info
-help
