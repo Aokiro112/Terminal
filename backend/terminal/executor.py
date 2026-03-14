@@ -1,5 +1,6 @@
 import subprocess
 import os
+import shutil
 
 class CommandExecutor:
     def __init__(self):
@@ -9,64 +10,249 @@ class CommandExecutor:
 
     def execute(self, command, tab_id="default"):
         self.history.append({"tab": tab_id, "cmd": command})
-        cmd = command.strip().lower()
+        cmd = command.strip()
+        low = cmd.lower()
 
-        # ── Natural language commands ──────────────────
+        # ── FOLDER commands ────────────────────────────
 
-        # "open folder <name>"
-        if cmd.startswith("open folder"):
-            folder = command.strip()[11:].strip()
-            return self._open_folder(folder)
+        if low.startswith("open folder"):
+            return self._open_folder(cmd[11:].strip())
 
-        # "create file <name>"
-        if cmd.startswith("create file"):
-            filename = command.strip()[11:].strip()
-            return self._create_file(filename)
+        if low.startswith("create folder") or low.startswith("make folder") or low.startswith("new folder"):
+            name = cmd.split(" ", 2)[2].strip()
+            return self._create_folder(name)
 
-        # "create folder <name>"
-        if cmd.startswith("create folder"):
-            folder = command.strip()[13:].strip()
-            return self._create_folder(folder)
+        if low.startswith("delete folder") or low.startswith("remove folder"):
+            return self._delete_folder(cmd.split(" ", 2)[2].strip())
 
-        # "delete file <name>"
-        if cmd.startswith("delete file"):
-            filename = command.strip()[11:].strip()
-            return self._delete_file(filename)
+        if low.startswith("rename folder"):
+            parts = cmd.split(" ", 3)
+            return self._rename(parts[2], parts[3]) if len(parts) == 4 else self._err("Purana aur naya naam dono batao")
 
-        # "delete folder <name>"
-        if cmd.startswith("delete folder"):
-            folder = command.strip()[13:].strip()
-            return self._delete_folder(folder)
+        # ── FILE commands ──────────────────────────────
 
-        # "show files"
-        if cmd in ["show files", "list files", "files"]:
+        if low.startswith("create file") or low.startswith("make file") or low.startswith("new file"):
+            return self._create_file(cmd.split(" ", 2)[2].strip())
+
+        if low.startswith("delete file") or low.startswith("remove file"):
+            return self._delete_file(cmd.split(" ", 2)[2].strip())
+
+        if low.startswith("rename file"):
+            parts = cmd.split(" ", 3)
+            return self._rename(parts[2], parts[3]) if len(parts) == 4 else self._err("Purana aur naya naam dono batao")
+
+        if low.startswith("open file"):
+            return self._open_file(cmd[9:].strip())
+
+        if low.startswith("copy file"):
+            parts = cmd.split(" ", 3)
+            return self._copy_file(parts[2], parts[3]) if len(parts) == 4 else self._err("Source aur destination dono batao")
+
+        if low.startswith("move file"):
+            parts = cmd.split(" ", 3)
+            return self._move_file(parts[2], parts[3]) if len(parts) == 4 else self._err("Source aur destination dono batao")
+
+        if low.startswith("read file"):
+            return self._read_file(cmd[9:].strip())
+
+        if low.startswith("write file"):
+            parts = cmd.split(" ", 3)
+            return self._write_file(parts[2], parts[3]) if len(parts) == 4 else self._err("Filename aur content dono batao")
+
+        if low.startswith("find file"):
+            return self._find_file(cmd[9:].strip())
+
+        # ── NAVIGATION commands ────────────────────────
+
+        if low in ["show files", "list files", "files", "ls", "dir"]:
             return self._show_files()
 
-        # "where am i"
-        if cmd in ["where am i", "current folder", "pwd"]:
-            return {"output": f"Tum yahan ho: {self.cwd}\n", "error": "", "cwd": self.cwd}
+        if low in ["where am i", "current folder", "pwd", "location"]:
+            return self._ok(f"Tum yahan ho: {self.cwd}\n")
 
-        # "go back"
-        if cmd in ["go back", "back"]:
-            parent = os.path.dirname(self.cwd)
-            return self._open_folder(parent)
+        if low in ["go back", "back", "go up"]:
+            return self._open_folder(os.path.dirname(self.cwd))
 
-        # cd command
-        if cmd.startswith("cd "):
-            path = command.strip()[3:].strip()
-            try:
-                new_path = os.path.join(self.cwd, path)
-                os.chdir(new_path)
-                self.cwd = os.getcwd()
-                return {"output": f"Folder change ho gaya: {self.cwd}\n", "error": "", "cwd": self.cwd}
-            except Exception as e:
-                return {"output": "", "error": f"Folder nahi mila: {e}\n", "cwd": self.cwd}
+        if low in ["go home", "home"]:
+            return self._open_folder(os.path.expanduser("~"))
 
-        # ── Normal OS commands ─────────────────────────
+        if low.startswith("go to") or low.startswith("goto"):
+            path = cmd.split(" ", 2)[2].strip() if low.startswith("go to") else cmd[5:].strip()
+            return self._open_folder(path)
+
+        if low.startswith("cd "):
+            return self._open_folder(cmd[3:].strip())
+
+        # ── NETWORK commands ───────────────────────────
+
+        if low in ["show ip", "my ip", "ip address", "ipconfig"]:
+            return self._run("ipconfig")
+
+        if low in ["check internet", "ping google", "internet check"]:
+            return self._run("ping google.com -n 4")
+
+        if low.startswith("ping "):
+            return self._run(f"ping {cmd[5:].strip()} -n 4")
+
+        if low in ["show wifi", "wifi list", "available wifi"]:
+            return self._run("netsh wlan show networks")
+
+        if low in ["my wifi", "connected wifi", "wifi name"]:
+            return self._run("netsh wlan show interfaces")
+
+        if low in ["open ports", "show ports", "ports"]:
+            return self._run("netstat -an")
+
+        # ── SYSTEM commands ────────────────────────────
+
+        if low in ["show processes", "running apps", "processes", "tasklist"]:
+            return self._run("tasklist")
+
+        if low.startswith("kill ") or low.startswith("stop "):
+            app = cmd.split(" ", 1)[1].strip()
+            return self._run(f"taskkill /IM {app} /F")
+
+        if low in ["system info", "pc info", "computer info"]:
+            return self._run("systeminfo")
+
+        if low in ["battery", "battery status", "check battery"]:
+            return self._run("powercfg /batteryreport /output battery.html && start battery.html")
+
+        if low in ["disk space", "storage", "check disk", "disk info"]:
+            return self._run("wmic logicaldisk get size,freespace,caption")
+
+        if low in ["cpu usage", "ram usage", "memory usage"]:
+            return self._run("wmic cpu get loadpercentage && wmic OS get FreePhysicalMemory")
+
+        if low in ["date", "today", "what date"]:
+            return self._run("date /t")
+
+        if low in ["time", "what time", "current time"]:
+            return self._run("time /t")
+
+        if low in ["shutdown", "shut down"]:
+            return self._run("shutdown /s /t 0")
+
+        if low in ["restart", "reboot"]:
+            return self._run("shutdown /r /t 0")
+
+        if low.startswith("shutdown in "):
+            mins = cmd.split(" ", 2)[2].strip()
+            secs = int(mins) * 60
+            return self._run(f"shutdown /s /t {secs}")
+
+        if low in ["cancel shutdown", "abort shutdown"]:
+            return self._run("shutdown /a")
+
+        if low in ["clear screen", "cls", "clear"]:
+            return self._ok("\033[2J\033[H")
+
+        # ── APP commands ───────────────────────────────
+
+        if low in ["open notepad", "notepad"]:
+            return self._run("start notepad")
+
+        if low in ["open calculator", "calculator", "calc"]:
+            return self._run("start calc")
+
+        if low in ["open paint", "paint"]:
+            return self._run("start mspaint")
+
+        if low in ["open browser", "browser", "open chrome"]:
+            return self._run("start chrome")
+
+        if low in ["open firefox"]:
+            return self._run("start firefox")
+
+        if low in ["open edge"]:
+            return self._run("start msedge")
+
+        if low.startswith("open "):
+            app = cmd[5:].strip()
+            return self._run(f"start {app}")
+
+        if low.startswith("search "):
+            query = cmd[7:].strip()
+            return self._run(f'start https://www.google.com/search?q={query.replace(" ", "+")}')
+
+        # ── GIT commands ───────────────────────────────
+
+        if low in ["git status", "status"]:
+            return self._run("git status")
+
+        if low in ["git init", "init repo"]:
+            return self._run("git init")
+
+        if low.startswith("git add"):
+            return self._run(cmd)
+
+        if low.startswith("commit "):
+            msg = cmd[7:].strip()
+            return self._run(f'git add . && git commit -m "{msg}"')
+
+        if low in ["git push", "push"]:
+            return self._run("git push")
+
+        if low in ["git pull", "pull"]:
+            return self._run("git pull")
+
+        if low.startswith("git clone ") or low.startswith("clone "):
+            url = cmd.split(" ", 2)[2] if low.startswith("git clone") else cmd[6:].strip()
+            return self._run(f"git clone {url}")
+
+        # ── PYTHON commands ────────────────────────────
+
+        if low.startswith("run python ") or low.startswith("run "):
+            file = cmd.split(" ", 2)[2] if low.startswith("run python") else cmd[4:].strip()
+            return self._run(f"python {file}")
+
+        if low.startswith("install "):
+            pkg = cmd[8:].strip()
+            return self._run(f"pip install {pkg}")
+
+        if low.startswith("uninstall "):
+            pkg = cmd[10:].strip()
+            return self._run(f"pip uninstall {pkg} -y")
+
+        if low in ["installed packages", "pip list", "show packages"]:
+            return self._run("pip list")
+
+        # ── NODE commands ──────────────────────────────
+
+        if low.startswith("npm install "):
+            return self._run(cmd)
+
+        if low in ["npm list", "node packages"]:
+            return self._run("npm list")
+
+        if low.startswith("node "):
+            return self._run(cmd)
+
+        # ── ENVIRONMENT commands ───────────────────────
+
+        if low in ["show env", "environment", "env variables"]:
+            return self._run("set")
+
+        if low.startswith("set env "):
+            parts = cmd.split(" ", 3)
+            if len(parts) == 4:
+                os.environ[parts[2]] = parts[3]
+                return self._ok(f"✓ ENV set: {parts[2]} = {parts[3]}\n")
+
+        # ── HELP ───────────────────────────────────────
+
+        if low in ["help", "commands", "?"]:
+            return self._help()
+
+        # ── FALLBACK — normal OS command ───────────────
+        return self._run(cmd)
+
+    # ── Helper functions ───────────────────────────────
+
+    def _run(self, cmd):
         try:
             result = subprocess.run(
-                command,
-                shell=True,
+                cmd, shell=True,
                 capture_output=True,
                 text=True,
                 cwd=self.cwd,
@@ -80,74 +266,119 @@ class CommandExecutor:
                 "exit_code": result.returncode
             }
         except subprocess.TimeoutExpired:
-            return {"output": "", "error": "Timeout: command 30s se zyada chala\n", "cwd": self.cwd}
+            return self._err("Timeout: command 30s se zyada chala")
         except Exception as e:
-            return {"output": "", "error": str(e) + "\n", "cwd": self.cwd}
+            return self._err(str(e))
 
-    # ── Helper functions ───────────────────────────────
+    def _ok(self, msg):
+        return {"output": msg, "error": "", "cwd": self.cwd}
+
+    def _err(self, msg):
+        return {"output": "", "error": f"✗ {msg}\n", "cwd": self.cwd}
 
     def _open_folder(self, folder):
         try:
-            # Full path hai ya relative
-            if os.path.isabs(folder):
-                new_path = folder
-            else:
-                new_path = os.path.join(self.cwd, folder)
-
-            new_path = os.path.normpath(new_path)
-            os.chdir(new_path)
+            path = folder if os.path.isabs(folder) else os.path.join(self.cwd, folder)
+            path = os.path.normpath(path)
+            os.chdir(path)
             self.cwd = os.getcwd()
-            return {"output": f"✓ Folder khul gaya: {self.cwd}\n", "error": "", "cwd": self.cwd}
+            return self._ok(f"✓ Folder khul gaya: {self.cwd}\n")
         except FileNotFoundError:
-            return {"output": "", "error": f"✗ '{folder}' naam ka folder nahi mila\n", "cwd": self.cwd}
+            return self._err(f"'{folder}' naam ka folder nahi mila")
         except Exception as e:
-            return {"output": "", "error": str(e) + "\n", "cwd": self.cwd}
+            return self._err(str(e))
 
     def _create_file(self, filename):
-        if not filename:
-            return {"output": "", "error": "✗ File ka naam batao\n", "cwd": self.cwd}
+        if not filename: return self._err("File ka naam batao")
         try:
-            filepath = os.path.join(self.cwd, filename)
-            with open(filepath, 'w') as f:
-                f.write("")
-            return {"output": f"✓ File ban gayi: {filename}\n", "error": "", "cwd": self.cwd}
+            open(os.path.join(self.cwd, filename), 'w').close()
+            return self._ok(f"✓ File ban gayi: {filename}\n")
         except Exception as e:
-            return {"output": "", "error": str(e) + "\n", "cwd": self.cwd}
+            return self._err(str(e))
 
     def _create_folder(self, folder):
-        if not folder:
-            return {"output": "", "error": "✗ Folder ka naam batao\n", "cwd": self.cwd}
+        if not folder: return self._err("Folder ka naam batao")
         try:
-            folderpath = os.path.join(self.cwd, folder)
-            os.makedirs(folderpath, exist_ok=True)
-            return {"output": f"✓ Folder ban gaya: {folder}\n", "error": "", "cwd": self.cwd}
+            os.makedirs(os.path.join(self.cwd, folder), exist_ok=True)
+            return self._ok(f"✓ Folder ban gaya: {folder}\n")
         except Exception as e:
-            return {"output": "", "error": str(e) + "\n", "cwd": self.cwd}
+            return self._err(str(e))
 
     def _delete_file(self, filename):
-        if not filename:
-            return {"output": "", "error": "✗ File ka naam batao\n", "cwd": self.cwd}
+        if not filename: return self._err("File ka naam batao")
         try:
-            filepath = os.path.join(self.cwd, filename)
-            os.remove(filepath)
-            return {"output": f"✓ File delete ho gayi: {filename}\n", "error": "", "cwd": self.cwd}
+            os.remove(os.path.join(self.cwd, filename))
+            return self._ok(f"✓ File delete ho gayi: {filename}\n")
         except FileNotFoundError:
-            return {"output": "", "error": f"✗ '{filename}' nahi mili\n", "cwd": self.cwd}
+            return self._err(f"'{filename}' nahi mili")
         except Exception as e:
-            return {"output": "", "error": str(e) + "\n", "cwd": self.cwd}
+            return self._err(str(e))
 
     def _delete_folder(self, folder):
-        if not folder:
-            return {"output": "", "error": "✗ Folder ka naam batao\n", "cwd": self.cwd}
+        if not folder: return self._err("Folder ka naam batao")
         try:
-            import shutil
-            folderpath = os.path.join(self.cwd, folder)
-            shutil.rmtree(folderpath)
-            return {"output": f"✓ Folder delete ho gaya: {folder}\n", "error": "", "cwd": self.cwd}
+            shutil.rmtree(os.path.join(self.cwd, folder))
+            return self._ok(f"✓ Folder delete ho gaya: {folder}\n")
         except FileNotFoundError:
-            return {"output": "", "error": f"✗ '{folder}' nahi mila\n", "cwd": self.cwd}
+            return self._err(f"'{folder}' nahi mila")
         except Exception as e:
-            return {"output": "", "error": str(e) + "\n", "cwd": self.cwd}
+            return self._err(str(e))
+
+    def _rename(self, old, new):
+        try:
+            os.rename(os.path.join(self.cwd, old), os.path.join(self.cwd, new))
+            return self._ok(f"✓ '{old}' ka naam '{new}' ho gaya\n")
+        except Exception as e:
+            return self._err(str(e))
+
+    def _open_file(self, filename):
+        try:
+            os.startfile(os.path.join(self.cwd, filename))
+            return self._ok(f"✓ File khul gayi: {filename}\n")
+        except Exception as e:
+            return self._err(str(e))
+
+    def _copy_file(self, src, dst):
+        try:
+            shutil.copy2(os.path.join(self.cwd, src), os.path.join(self.cwd, dst))
+            return self._ok(f"✓ File copy ho gayi: {src} → {dst}\n")
+        except Exception as e:
+            return self._err(str(e))
+
+    def _move_file(self, src, dst):
+        try:
+            shutil.move(os.path.join(self.cwd, src), os.path.join(self.cwd, dst))
+            return self._ok(f"✓ File move ho gayi: {src} → {dst}\n")
+        except Exception as e:
+            return self._err(str(e))
+
+    def _read_file(self, filename):
+        try:
+            with open(os.path.join(self.cwd, filename), 'r') as f:
+                return self._ok(f.read() + "\n")
+        except Exception as e:
+            return self._err(str(e))
+
+    def _write_file(self, filename, content):
+        try:
+            with open(os.path.join(self.cwd, filename), 'w') as f:
+                f.write(content)
+            return self._ok(f"✓ File mein likh diya: {filename}\n")
+        except Exception as e:
+            return self._err(str(e))
+
+    def _find_file(self, filename):
+        try:
+            results = []
+            for root, dirs, files in os.walk(self.cwd):
+                for f in files:
+                    if filename.lower() in f.lower():
+                        results.append(os.path.join(root, f))
+            if results:
+                return self._ok("Mili files:\n" + "\n".join(results) + "\n")
+            return self._ok(f"'{filename}' nahi mili\n")
+        except Exception as e:
+            return self._err(str(e))
 
     def _show_files(self):
         try:
@@ -155,9 +386,23 @@ class CommandExecutor:
             folders = [f"📁 {i}" for i in items if os.path.isdir(os.path.join(self.cwd, i))]
             files   = [f"📄 {i}" for i in items if os.path.isfile(os.path.join(self.cwd, i))]
             output  = "\n".join(folders + files) + "\n"
-            return {"output": output or "Kuch nahi hai yahan\n", "error": "", "cwd": self.cwd}
+            return self._ok(output or "Kuch nahi hai yahan\n")
         except Exception as e:
-            return {"output": "", "error": str(e) + "\n", "cwd": self.cwd}
+            return self._err(str(e))
+
+    def _help(self):
+        return self._ok("""
+📁 FOLDER:   open folder <naam>  |  create folder <naam>  |  delete folder <naam>
+📄 FILE:     create file <naam>  |  delete file <naam>  |  read file <naam>
+             copy file <src> <dst>  |  move file <src> <dst>  |  find file <naam>
+🗺️  NAV:     show files  |  where am i  |  go back  |  go home  |  go to <path>
+🌐 NETWORK:  show ip  |  check internet  |  ping <site>  |  show wifi
+💻 SYSTEM:   show processes  |  kill <app>  |  system info  |  disk space  |  cpu usage
+🚀 APPS:     open notepad  |  open chrome  |  open calculator  |  search <query>
+🐍 PYTHON:   run <file.py>  |  install <package>  |  installed packages
+🔧 GIT:      git status  |  git init  |  commit <message>  |  push  |  pull
+⚙️  OTHER:   date  |  time  |  shutdown  |  restart  |  clear screen
+""")
 
     def get_history(self, tab_id=None):
         if tab_id:
@@ -165,3 +410,25 @@ class CommandExecutor:
         return self.history
 
 executor = CommandExecutor()
+```
+
+---
+
+Ab yeh sab bolne se kaam hoga:
+```
+open folder Documents
+create file notes.txt
+read file notes.txt
+write file notes.txt Hello bhai!
+find file notes
+copy file notes.txt backup.txt
+show files
+check internet
+show ip
+open notepad
+search Python tutorial
+install requests
+commit mera pehla commit
+disk space
+system info
+help
