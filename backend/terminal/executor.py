@@ -16,8 +16,23 @@ class CommandExecutor:
 
         # ── FOLDER commands ────────────────────────────
 
-        if low.startswith("open folder"):
-            return self._open_folder(cmd[11:].strip())
+        if low.startswith("open folder") or low.startswith("open downloads") or low.startswith("open documents") or low.startswith("open desktop"):
+            if low == "open downloads":
+                folder = os.path.join(os.path.expanduser("~"), "Downloads")
+                subprocess.Popen(f'explorer "{folder}"')
+                return self._open_folder(folder)
+            if low == "open documents":
+                folder = os.path.join(os.path.expanduser("~"), "Documents")
+                subprocess.Popen(f'explorer "{folder}"')
+                return self._open_folder(folder)
+            if low == "open desktop":
+                folder = os.path.join(os.path.expanduser("~"), "Desktop")
+                subprocess.Popen(f'explorer "{folder}"')
+                return self._open_folder(folder)
+            folder = cmd[11:].strip()
+            full_path = folder if os.path.isabs(folder) else os.path.join(self.cwd, folder)
+            subprocess.Popen(f'explorer "{os.path.normpath(full_path)}"')
+            return self._open_folder(folder)
 
         if low.startswith("create folder") or low.startswith("make folder") or low.startswith("new folder"):
             name = cmd.split(" ", 2)[2].strip()
@@ -63,22 +78,68 @@ class CommandExecutor:
         if low.startswith("find file"):
             return self._find_file(cmd[9:].strip())
 
-        # ── NAVIGATION commands ────────────────────────
+        # ── SHOW commands ──────────────────────────────
 
-        if low in ["show files", "list files", "files", "ls", "dir"]:
+        if low in ["show", "show files", "list files", "files", "ls", "dir"]:
             return self._show_files()
+
+        if low in ["show folders", "list folders", "folders"]:
+            return self._show_folders_only()
+
+        if low.startswith("show file "):
+            return self._read_file(cmd[10:].strip())
+
+        if low in ["show info", "system info", "pc info", "show system"]:
+            return self._show_system_info()
+
+        if low in ["show ip", "my ip", "ip address", "ipconfig"]:
+            return self._run("ipconfig")
+
+        if low in ["show wifi", "wifi list", "available wifi"]:
+            return self._run("netsh wlan show networks")
+
+        if low in ["show processes", "running apps", "processes", "tasklist"]:
+            return self._run("tasklist")
+
+        if low in ["show ports", "open ports", "ports"]:
+            return self._run("netstat -an")
+
+        if low in ["show env", "environment", "env variables"]:
+            return self._run("set")
+
+        if low in ["show packages", "installed packages", "pip list"]:
+            return self._run("pip list")
+
+        if low in ["show disk", "disk space", "storage", "check disk", "disk info"]:
+            return self._run("wmic logicaldisk get size,freespace,caption")
+
+        if low in ["show cpu", "cpu usage", "show ram", "ram usage", "memory usage"]:
+            return self._run("wmic cpu get loadpercentage && wmic OS get FreePhysicalMemory")
+
+        if low in ["show date", "date", "today", "what date"]:
+            return self._run("date /t")
+
+        if low in ["show time", "time", "what time", "current time"]:
+            return self._run("time /t")
+
+        # ── NAVIGATION commands ────────────────────────
 
         if low in ["where am i", "current folder", "pwd", "location"]:
             return self._ok(f"Tum yahan ho: {self.cwd}\n")
 
         if low in ["go back", "back", "go up"]:
-            return self._open_folder(os.path.dirname(self.cwd))
+            parent = os.path.dirname(self.cwd)
+            subprocess.Popen(f'explorer "{parent}"')
+            return self._open_folder(parent)
 
         if low in ["go home", "home"]:
-            return self._open_folder(os.path.expanduser("~"))
+            home = os.path.expanduser("~")
+            subprocess.Popen(f'explorer "{home}"')
+            return self._open_folder(home)
 
         if low.startswith("go to"):
             path = cmd.split(" ", 2)[2].strip()
+            subprocess.Popen(f'explorer "{os.path.normpath(path)}"')
             return self._open_folder(path)
 
         if low.startswith("cd "):
@@ -86,47 +147,20 @@ class CommandExecutor:
 
         # ── NETWORK commands ───────────────────────────
 
-        if low in ["show ip", "my ip", "ip address", "ipconfig"]:
-            return self._run("ipconfig")
-
         if low in ["check internet", "ping google", "internet check"]:
             return self._run("ping google.com -n 4")
 
         if low.startswith("ping "):
             return self._run(f"ping {cmd[5:].strip()} -n 4")
 
-        if low in ["show wifi", "wifi list", "available wifi"]:
-            return self._run("netsh wlan show networks")
-
         if low in ["my wifi", "connected wifi", "wifi name"]:
             return self._run("netsh wlan show interfaces")
 
-        if low in ["open ports", "show ports", "ports"]:
-            return self._run("netstat -an")
-
         # ── SYSTEM commands ────────────────────────────
-
-        if low in ["show processes", "running apps", "processes", "tasklist"]:
-            return self._run("tasklist")
 
         if low.startswith("kill ") or low.startswith("stop "):
             app = cmd.split(" ", 1)[1].strip()
             return self._run(f"taskkill /IM {app} /F")
-
-        if low in ["system info", "pc info", "computer info"]:
-            return self._run("systeminfo")
-
-        if low in ["disk space", "storage", "check disk", "disk info"]:
-            return self._run("wmic logicaldisk get size,freespace,caption")
-
-        if low in ["cpu usage", "ram usage", "memory usage"]:
-            return self._run("wmic cpu get loadpercentage && wmic OS get FreePhysicalMemory")
-
-        if low in ["date", "today", "what date"]:
-            return self._run("date /t")
-
-        if low in ["time", "what time", "current time"]:
-            return self._run("time /t")
 
         if low in ["shutdown", "shut down"]:
             return self._run("shutdown /s /t 0")
@@ -167,6 +201,11 @@ class CommandExecutor:
 
         if low.startswith("open "):
             app = cmd[5:].strip()
+            full = os.path.join(self.cwd, app)
+            if os.path.isdir(full) or os.path.isdir(app):
+                path = full if os.path.isdir(full) else app
+                subprocess.Popen(f'explorer "{os.path.normpath(path)}"')
+                return self._open_folder(path)
             return self._run(f"start {app}")
 
         if low.startswith("search "):
@@ -216,9 +255,6 @@ class CommandExecutor:
             pkg = cmd[10:].strip()
             return self._run(f"pip uninstall {pkg} -y")
 
-        if low in ["installed packages", "pip list", "show packages"]:
-            return self._run("pip list")
-
         # ── NODE commands ──────────────────────────────
 
         if low.startswith("npm install "):
@@ -231,9 +267,6 @@ class CommandExecutor:
             return self._run(cmd)
 
         # ── ENVIRONMENT commands ───────────────────────
-
-        if low in ["show env", "environment", "env variables"]:
-            return self._run("set")
 
         if low.startswith("set env "):
             parts = cmd.split(" ", 3)
@@ -294,8 +327,9 @@ class CommandExecutor:
         if not filename:
             return self._err("File ka naam batao")
         try:
-            open(os.path.join(self.cwd, filename), 'w').close()
-            return self._ok(f"✓ File ban gayi: {filename}\n")
+            filepath = os.path.join(self.cwd, filename)
+            open(filepath, 'w').close()
+            return self._ok(f"✓ File ban gayi!\n   Naam  : {filename}\n   Kahan : {filepath}\n")
         except Exception as e:
             return self._err(str(e))
 
@@ -303,8 +337,9 @@ class CommandExecutor:
         if not folder:
             return self._err("Folder ka naam batao")
         try:
-            os.makedirs(os.path.join(self.cwd, folder), exist_ok=True)
-            return self._ok(f"✓ Folder ban gaya: {folder}\n")
+            folderpath = os.path.join(self.cwd, folder)
+            os.makedirs(folderpath, exist_ok=True)
+            return self._ok(f"✓ Folder ban gaya!\n   Naam  : {folder}\n   Kahan : {folderpath}\n")
         except Exception as e:
             return self._err(str(e))
 
@@ -389,25 +424,157 @@ class CommandExecutor:
     def _show_files(self):
         try:
             items = os.listdir(self.cwd)
-            folders = [f"📁 {i}" for i in items if os.path.isdir(os.path.join(self.cwd, i))]
-            files = [f"📄 {i}" for i in items if os.path.isfile(os.path.join(self.cwd, i))]
-            output = "\n".join(folders + files) + "\n"
-            return self._ok(output or "Kuch nahi hai yahan\n")
+            folders = []
+            files = []
+            for i in items:
+                full = os.path.join(self.cwd, i)
+                if os.path.isdir(full):
+                    folders.append(f"  📁  {i}")
+                else:
+                    size = os.path.getsize(full)
+                    if size < 1024:
+                        size_str = f"{size} B"
+                    elif size < 1024 * 1024:
+                        size_str = f"{size//1024} KB"
+                    else:
+                        size_str = f"{size//1024//1024} MB"
+                    files.append(f"  📄  {i}  ({size_str})")
+
+            output = f"\n📍 Location: {self.cwd}\n"
+            output += f"{'─'*50}\n"
+            if folders:
+                output += f"\n🗂️  Folders ({len(folders)}):\n" + "\n".join(folders) + "\n"
+            if files:
+                output += f"\n📝 Files ({len(files)}):\n" + "\n".join(files) + "\n"
+            if not folders and not files:
+                output += "\n  (Yahan kuch nahi hai)\n"
+            output += f"{'─'*50}\n"
+            return self._ok(output)
         except Exception as e:
             return self._err(str(e))
 
+    def _show_folders_only(self):
+        try:
+            items = os.listdir(self.cwd)
+            folders = [f"  📁  {i}" for i in items if os.path.isdir(os.path.join(self.cwd, i))]
+            output = f"\n📍 Location: {self.cwd}\n{'─'*50}\n"
+            if folders:
+                output += f"\n🗂️  Folders ({len(folders)}):\n" + "\n".join(folders) + "\n"
+            else:
+                output += "\n  (Koi folder nahi)\n"
+            output += f"{'─'*50}\n"
+            return self._ok(output)
+        except Exception as e:
+            return self._err(str(e))
+
+    def _show_system_info(self):
+        output = f"\n💻 System Info\n{'─'*50}\n"
+        try:
+            r = subprocess.run("wmic cpu get name", shell=True, capture_output=True, text=True)
+            lines = [l.strip() for l in r.stdout.strip().split("\n") if l.strip() and "Name" not in l]
+            cpu = lines[0] if lines else "N/A"
+            output += f"  🔲 CPU     : {cpu}\n"
+
+            r = subprocess.run("wmic OS get TotalVisibleMemorySize,FreePhysicalMemory", shell=True, capture_output=True, text=True)
+            lines = [l.strip() for l in r.stdout.strip().split("\n") if l.strip() and "Total" not in l and "Free" not in l]
+            if lines:
+                nums = lines[0].split()
+                if len(nums) == 2:
+                    free_mb = int(nums[0]) // 1024
+                    total_mb = int(nums[1]) // 1024
+                    output += f"  🧠 RAM     : {free_mb} MB free / {total_mb} MB total\n"
+
+            r = subprocess.run("wmic logicaldisk get caption,freespace,size", shell=True, capture_output=True, text=True)
+            output += f"  💾 Disk    :\n"
+            for line in r.stdout.strip().split("\n")[1:]:
+                parts = line.split()
+                if len(parts) == 3:
+                    try:
+                        drive = parts[0]
+                        free_gb = int(parts[1]) // (1024**3)
+                        total_gb = int(parts[2]) // (1024**3)
+                        output += f"             {drive} — {free_gb} GB free / {total_gb} GB total\n"
+                    except Exception:
+                        pass
+
+            r = subprocess.run("wmic os get caption", shell=True, capture_output=True, text=True)
+            os_lines = [l.strip() for l in r.stdout.strip().split("\n") if l.strip() and "Caption" not in l]
+            os_name = os_lines[0] if os_lines else "N/A"
+            output += f"  🪟 OS      : {os_name}\n"
+            output += f"  👤 User    : {os.environ.get('USERNAME', 'N/A')}\n"
+            output += f"  📍 Folder  : {self.cwd}\n"
+            output += f"{'─'*50}\n"
+        except Exception as e:
+            output += f"  Error: {e}\n"
+        return self._ok(output)
+
     def _help(self):
         return self._ok("""
-📁 FOLDER:   open folder <naam>  |  create folder <naam>  |  delete folder <naam>  |  rename folder <purana> <naya>
-📄 FILE:     create file <naam>  |  delete file <naam>    |  read file <naam>       |  write file <naam> <content>
-             copy file <src> <dst>  |  move file <src> <dst>  |  find file <naam>   |  open file <naam>
-🗺️  NAV:     show files  |  where am i  |  go back  |  go home  |  go to <path>  |  cd <path>
-🌐 NETWORK:  show ip  |  check internet  |  ping <site>  |  show wifi  |  my wifi  |  open ports
-💻 SYSTEM:   show processes  |  kill <app>  |  system info  |  disk space  |  cpu usage  |  date  |  time
-🚀 APPS:     open notepad  |  open chrome  |  open calculator  |  open paint  |  open edge  |  search <query>
-🐍 PYTHON:   run <file.py>  |  install <package>  |  uninstall <package>  |  installed packages
-🔧 GIT:      git status  |  git init  |  commit <message>  |  push  |  pull  |  clone <url>
-⚙️  OTHER:   shutdown  |  restart  |  shutdown in <mins>  |  cancel shutdown  |  clear screen
+╔══════════════════════════════════════════════════╗
+║           ADVANCED TERMINAL - HELP               ║
+╚══════════════════════════════════════════════════╝
+
+📁 FOLDER:
+   open folder <naam>          → folder kholo + Explorer bhi
+   create folder <naam>        → naya folder banao
+   delete folder <naam>        → folder hatao
+   rename folder <old> <new>   → naam badlo
+   open downloads / documents / desktop
+
+📄 FILE:
+   create file <naam>          → naya file banao
+   delete file <naam>          → file hatao
+   open file <naam>            → file kholo
+   read file <naam>            → file padho
+   write file <naam> <text>    → file mein likho
+   copy file <src> <dst>       → copy karo
+   move file <src> <dst>       → move karo
+   find file <naam>            → dhundho
+
+👁️  SHOW:
+   show                        → files + folders list
+   show folders                → sirf folders
+   show file <naam>            → file ka content
+   show info                   → CPU, RAM, Disk, OS info
+   show ip                     → IP address
+   show wifi                   → WiFi networks
+   show processes              → chal rahe apps
+   show disk                   → disk space
+   show packages               → pip packages
+
+🗺️  NAVIGATION:
+   where am i                  → current location
+   go back                     → pichha jao
+   go home                     → home folder
+   go to <path>                → kisi bhi path pe jao
+
+🌐 NETWORK:
+   check internet              → internet check karo
+   ping <site>                 → ping karo
+   my wifi                     → connected wifi info
+
+💻 SYSTEM:
+   show info                   → system details
+   kill <app.exe>              → app band karo
+   shutdown / restart          → PC band/restart karo
+   shutdown in <mins>          → timer se band karo
+   cancel shutdown             → shutdown cancel karo
+
+🚀 APPS:
+   open notepad / calculator / paint / chrome / edge
+   search <query>              → Google search
+
+🐍 PYTHON:
+   run <file.py>               → Python file chalao
+   install <package>           → pip install
+   uninstall <package>         → pip uninstall
+
+🔧 GIT:
+   git status / git init
+   commit <message>            → add + commit
+   push / pull / clone <url>
+
+══════════════════════════════════════════════════
 """)
 
     def get_history(self, tab_id=None):
